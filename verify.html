@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify a result</title>
+<link rel="stylesheet" href="css/style.css?v=2">
+<style>
+  .verify-page { min-height: 100vh; padding: 32px 20px; display: flex; justify-content: center; }
+  .verify-card { max-width: 520px; width: 100%; }
+  .verify-card .auth-card { padding: 28px 24px; }
+  table.result-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14.5px; }
+  table.result-table th, table.result-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border-soft); }
+  table.result-table th { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+  .powered-by {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .powered-by img { height: 22px; width: auto; }
+  .powered-by span { font-size: 12px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+  <div class="verify-page">
+    <div class="verify-card">
+      <div class="auth-card">
+        <p class="eyebrow">Result verification</p>
+        <h1 style="margin:4px 0 6px;">Verify a result</h1>
+        <p class="subtitle">Scan a QR code from a report card, or type the code printed below it.</p>
+
+        <div class="field">
+          <label for="code-input">Verification code</label>
+          <input type="text" id="code-input" placeholder="Paste or type the code here">
+        </div>
+        <button class="btn-primary" onclick="lookupCode()">Look up result</button>
+
+        <div id="error-banner" class="error-banner"></div>
+        <div id="result-output"></div>
+
+        <div class="powered-by">
+          <img src="assets/logo.png" alt="Pride Int. School">
+          <span>Powered by Pride Int. School</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script>
+    function showError(message) {
+      const el = document.getElementById('error-banner');
+      el.textContent = message;
+      el.classList.add('visible');
+    }
+    function clearError() {
+      const el = document.getElementById('error-banner');
+      el.textContent = '';
+      el.classList.remove('visible');
+    }
+
+    async function lookupCode() {
+      clearError();
+      document.getElementById('result-output').innerHTML = '';
+      const code = document.getElementById('code-input').value.trim();
+      if (!code) { showError('Enter a code first.'); return; }
+
+      const { data, error } = await supabaseClient.rpc('get_report_by_token', { p_token: code });
+
+      if (error) {
+        if (error.code === '42883' || /function.*does not exist/i.test(error.message)) {
+          showError('The verification system isn\'t set up yet on this database (a required migration is missing). Ask the school admin to check this.');
+        } else {
+          showError('Something went wrong looking that up: ' + error.message);
+        }
+        return;
+      }
+
+      if (!data || !data.length) {
+        showError('No published result found for that code yet. This can mean the code is wrong, or the result hasn\'t been published by the school yet.');
+        return;
+      }
+
+      const first = data[0];
+      const rows = data.map((r) => `
+        <tr>
+          <td>${r.subject_name}</td>
+          <td>${r.ca_score ?? '&mdash;'}</td>
+          <td>${r.exam_score ?? '&mdash;'}</td>
+          <td>${r.total_score ?? '&mdash;'}</td>
+          <td>${r.grade || '&mdash;'}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('result-output').innerHTML = `
+        <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border-soft);">
+          <p style="font-weight:700; font-size:17px; margin:0 0 2px;">${first.student_name}</p>
+          <p class="text-muted" style="font-size:13.5px; margin:0 0 12px;">${first.class_name || 'Unassigned'} &middot; ${first.year_label} &middot; ${first.term}</p>
+          <table class="result-table">
+            <thead><tr><th>Subject</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // If opened via a QR scan (?token=...), look it up automatically
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      if (token) {
+        document.getElementById('code-input').value = token;
+        lookupCode();
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parent sign in — Results Workspace</title>
+<link rel="stylesheet" href="css/style.css?v=2">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo" id="auth-logo">RM</div>
+      <p class="eyebrow">Welcome back</p>
+      <h1>Parent sign in</h1>
+      <p class="subtitle">Enter the username and PIN your child's school gave you.</p>
+
+      <div id="error-banner" class="error-banner"></div>
+
+      <form id="parent-login-form">
+        <div class="field">
+          <label for="username">Username</label>
+          <input type="text" id="username" placeholder="e.g. chinedu.okafor" required autocapitalize="none">
+        </div>
+        <div class="field">
+          <label for="pin">6-digit PIN</label>
+          <input type="password" id="pin" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" maxlength="6" inputmode="numeric" required>
+        </div>
+        <button type="submit" id="submit-btn" class="btn-primary">Sign in</button>
+      </form>
+
+      <p class="form-footer">Staff member? <a href="login.html">Sign in here</a></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js?v=2"></script>
+  <script src="js/branding.js?v=1"></script>
+  <script src="js/parent-login.js?v=1"></script>
+  <script>
+    document.getElementById('parent-login-form').addEventListener('submit', handleParentLogin);
+  </script>
+</body>
+</html>
