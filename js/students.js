@@ -144,7 +144,7 @@ function renderStudentsBody(classes, students, formMasterByClass) {
           </div>
           <div class="field">
             <label for="new-student-admission">Admission no.</label>
-            <input type="text" id="new-student-admission" placeholder="Optional">
+            <input type="text" id="new-student-admission" placeholder="Leave blank to auto-generate">
           </div>
           <div class="field">
             <label for="new-student-class">Class</label>
@@ -285,9 +285,16 @@ async function submitNewStudent() {
 
   if (!name) { showFormError('Student name is required.'); return; }
 
+  let finalAdmissionNo = admissionNo || null;
+  if (!finalAdmissionNo && !editingStudentId) {
+    const { data: generated, error: genError } = await supabaseClient.rpc('get_next_admission_number', { p_school_id: currentSchoolId });
+    if (genError) { showFormError('Could not auto-generate an admission number: ' + genError.message); return; }
+    finalAdmissionNo = generated;
+  }
+
   const payload = {
     name,
-    admission_no: admissionNo || null,
+    admission_no: finalAdmissionNo,
     class_id: classId,
     guardian_email: guardianEmail || null,
     guardian_phone: guardianPhone || null,

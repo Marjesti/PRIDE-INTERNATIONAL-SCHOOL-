@@ -240,15 +240,15 @@ function waitForQRCodeLib(timeoutMs = 1000) {
   });
 }
 
-async function getOrCreateCardToken(studentId) {
-  if (!activeSessionId) return null;
+async function getOrCreateIdCardToken(subjectType, subjectId) {
   const { data: existing } = await supabaseClient
-    .from('report_verifications').select('token')
-    .eq('student_id', studentId).eq('session_id', activeSessionId).maybeSingle();
+    .from('id_card_verifications').select('token')
+    .eq('subject_type', subjectType).eq('subject_id', subjectId).maybeSingle();
   if (existing) return existing.token;
 
   const { data: created, error } = await supabaseClient
-    .from('report_verifications').insert({ student_id: studentId, session_id: activeSessionId })
+    .from('id_card_verifications')
+    .insert({ school_id: currentSchoolId, subject_type: subjectType, subject_id: subjectId })
     .select('token').single();
   return error ? null : created.token;
 }
@@ -279,15 +279,10 @@ async function renderCardPreview(people) {
     const holder = document.getElementById(`id-card-qr-${i}`);
     if (!holder) continue;
 
-    let qrText = `${people[i]?.name || ''} \u00b7 ${schoolName}`;
-    if (cardKind === 'student') {
-      const token = await getOrCreateCardToken(people[i].id);
-      qrText = token
-        ? `${window.location.origin}${window.location.pathname.replace('id-cards.html', '')}verify.html?token=${token}`
-        : `${people[i].name} \u00b7 ${schoolName}`;
-    } else {
-      qrText = `${people[i].name} \u00b7 STAFF-${people[i].id} \u00b7 ${schoolName}`;
-    }
+    const token = await getOrCreateIdCardToken(cardKind, people[i].id);
+    const qrText = token
+      ? `${window.location.origin}${window.location.pathname.replace('id-cards.html', '')}id-verify.html?token=${token}`
+      : `${people[i]?.name || ''} \u00b7 ${schoolName}`;
 
     try {
       const drawn = window.renderQrCode ? renderQrCode(holder, qrText, 96) : false;
@@ -346,7 +341,7 @@ function cardPairHtml(p, idx, className) {
         </div>
         <div class="id-card-back-right">
           <span id="id-card-qr-${idx}" class="id-card-qr"></span>
-          <span class="id-card-qr-caption">${cardKind === 'student' ? 'Scan to verify' : 'Scan for staff info'}</span>
+          <span class="id-card-qr-caption">Scan to verify ID</span>
           <span class="id-card-qr-caption">Valid ${activeSessionLabel || '&mdash;'}</span>
         </div>
       </div>

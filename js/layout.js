@@ -14,6 +14,8 @@ const NAV_ITEMS = [
   { key: 'academics',       label: 'Academics',       href: 'academics.html',       icon: '&#128214;' },
   { key: 'teachers',        label: 'Teachers',        href: 'teachers.html',        icon: '&#127891;' },
   { key: 'id-cards',        label: 'ID Cards',        href: 'id-cards.html',        icon: '&#128100;' },
+  { key: 'promotions',      label: 'Promotions',      href: 'promotions.html',      icon: '&#11014;' },
+  { key: 'timetable',       label: 'Timetable',       href: 'timetable.html',       icon: '&#128197;' },
   { key: 'analytics',       label: 'Analytics',       href: 'analytics.html',       icon: '&#128200;' },
   { key: 'notifications',   label: 'Notifications',   href: 'notifications.html',   icon: '&#128276;' },
   { key: 'logins',          label: 'Logins',          href: 'logins.html',          icon: '&#128273;' },

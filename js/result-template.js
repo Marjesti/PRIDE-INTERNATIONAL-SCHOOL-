@@ -33,7 +33,7 @@ async function loadResultTemplatePage() {
   currentSchoolId = profile.school_id;
 
   const [{ data: school }, { data: session }, { data: classes }] = await Promise.all([
-    supabaseClient.from('schools').select('name, address, phone, logo_url').eq('id', currentSchoolId).single(),
+    supabaseClient.from('schools').select('name, address, phone, logo_url, stamp_url').eq('id', currentSchoolId).single(),
     supabaseClient.from('academic_sessions').select('id, year_label, term').eq('school_id', currentSchoolId).eq('is_active', true).maybeSingle(),
     supabaseClient.from('classes').select('id, name').eq('school_id', currentSchoolId).order('name'),
   ]);
@@ -289,7 +289,18 @@ function reportCardHtml(student, stats, token, verifyUrl) {
       <div class="report-remarks">
         <p><strong>Headteacher/Principal's remarks:</strong> ${notes.headteacher_remark || '_______________________________________________'}</p>
         <p><strong>Teacher's remark:</strong> ${notes.teacher_remark || '_______________________________________________'}</p>
-        <p style="margin-top:16px;"><strong>Sign and stamp:</strong> ______________________</p>
+      </div>
+
+      <div class="report-signatures">
+        ${schoolInfo.stamp_url ? `<img src="${schoolInfo.stamp_url}" alt="School stamp" class="report-stamp">` : ''}
+        <div class="report-signature-block">
+          <div class="report-signature-line"></div>
+          <p>Headteacher's signature</p>
+        </div>
+        <div class="report-signature-block">
+          <div class="report-signature-line"></div>
+          <p>Principal's signature</p>
+        </div>
       </div>
     </div>
   `;

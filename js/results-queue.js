@@ -185,18 +185,18 @@ function renderResultsBody(results) {
           </div>
           <div class="field">
             <label for="result-ca1">CA1 score</label>
-            <input type="number" id="result-ca1" min="0" max="30" placeholder="e.g. 12">
+            <input type="number" id="result-ca1" min="0" max="15" placeholder="e.g. 12">
           </div>
           <div class="field">
             <label for="result-ca2">CA2 score</label>
-            <input type="number" id="result-ca2" min="0" max="30" placeholder="e.g. 15">
+            <input type="number" id="result-ca2" min="0" max="15" placeholder="e.g. 15">
           </div>
           <div class="field">
             <label for="result-exam">Exam score (out of 70)</label>
             <input type="number" id="result-exam" min="0" max="70" placeholder="e.g. 60">
           </div>
         </div>
-        <p class="text-muted" style="font-size:12px; margin-top:-8px;">CA1 + CA2 together must not exceed 30. Enter one now and add the other later &mdash; both save independently.</p>
+        <p class="text-muted" style="font-size:12px; margin-top:-8px;">Maximums depend on the student's section (Pre-Nursery/Nursery/Primary: 20+20+60 &middot; JSS/SSS: 15+15+70). Choose a student to see the right limits. Enter one CA now and add the other later &mdash; both save independently.</p>
         <button class="btn-gold" id="result-form-submit-btn" onclick="submitNewResult()">${editingResultId ? 'Save changes' : 'Save result'}</button>
         ${editingResultId ? `<button class="btn-outline" onclick="cancelEditResult()">Cancel</button>` : ''}
       </div>
@@ -217,6 +217,31 @@ function renderResultsBody(results) {
   `;
 }
 
+// CA1/CA2/Exam maximums differ by section: the younger sections weight CA
+// higher (20/20/60), JSS and SSS weight the exam higher (15/15/70).
+function getAssessmentCaps(section) {
+  if (section === 'Playgroup/Pre-Nursery' || section === 'Nursery' || section === 'Primary') {
+    return { ca1: 20, ca2: 20, exam: 60 };
+  }
+  // Junior Secondary, Senior Secondary, and anything unrecognised/unset.
+  return { ca1: 15, ca2: 15, exam: 70 };
+}
+
+let currentAssessmentCaps = getAssessmentCaps(null);
+
+function applyAssessmentCapsToForm(section) {
+  currentAssessmentCaps = getAssessmentCaps(section);
+  const ca1Input = document.getElementById('result-ca1');
+  const ca2Input = document.getElementById('result-ca2');
+  const examInput = document.getElementById('result-exam');
+  ca1Input.max = currentAssessmentCaps.ca1;
+  ca2Input.max = currentAssessmentCaps.ca2;
+  examInput.max = currentAssessmentCaps.exam;
+  document.querySelector('label[for="result-ca1"]').textContent = `CA1 score (out of ${currentAssessmentCaps.ca1})`;
+  document.querySelector('label[for="result-ca2"]').textContent = `CA2 score (out of ${currentAssessmentCaps.ca2})`;
+  document.querySelector('label[for="result-exam"]').textContent = `Exam score (out of ${currentAssessmentCaps.exam})`;
+}
+
 function onResultStudentChange() {
   const studentId = document.getElementById('result-student').value;
   const subjectSelect = document.getElementById('result-subject');
@@ -224,6 +249,8 @@ function onResultStudentChange() {
 
   const student = currentStudents.find((s) => String(s.id) === String(studentId));
   const classSection = student?.classes?.section || null;
+
+  applyAssessmentCapsToForm(classSection);
 
   // Only show subjects that belong to this student's section (or have no
   // section set at all), so pre-nursery/primary students aren't offered
@@ -291,10 +318,10 @@ async function submitNewResult() {
   const ca2Score = ca2 === '' ? null : Number(ca2);
   const examScore = exam === '' ? null : Number(exam);
 
-  if (ca1Score !== null && (ca1Score < 0 || ca1Score > 30)) { showFormError('CA1 score must be between 0 and 30.'); return; }
-  if (ca2Score !== null && (ca2Score < 0 || ca2Score > 30)) { showFormError('CA2 score must be between 0 and 30.'); return; }
-  if ((ca1Score ?? 0) + (ca2Score ?? 0) > 30) { showFormError('CA1 + CA2 together cannot exceed 30.'); return; }
-  if (examScore !== null && (examScore < 0 || examScore > 70)) { showFormError('Exam score must be between 0 and 70.'); return; }
+  const caps = currentAssessmentCaps;
+  if (ca1Score !== null && (ca1Score < 0 || ca1Score > caps.ca1)) { showFormError(`CA1 score must be between 0 and ${caps.ca1}.`); return; }
+  if (ca2Score !== null && (ca2Score < 0 || ca2Score > caps.ca2)) { showFormError(`CA2 score must be between 0 and ${caps.ca2}.`); return; }
+  if (examScore !== null && (examScore < 0 || examScore > caps.exam)) { showFormError(`Exam score must be between 0 and ${caps.exam}.`); return; }
 
   const caTotal = (ca1Score !== null || ca2Score !== null) ? (ca1Score ?? 0) + (ca2Score ?? 0) : null;
   const total = (caTotal !== null && examScore !== null) ? caTotal + examScore : null;

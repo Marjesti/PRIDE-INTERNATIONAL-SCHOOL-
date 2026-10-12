@@ -694,6 +694,44 @@
 
 .report-remarks p { font-size: 13px; margin: 6px 0; overflow-wrap: anywhere; }
 
+.report-signatures {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 40px;
+  margin-top: 34px;
+  padding-top: 4px;
+}
+
+.report-signature-block {
+  flex: 1;
+  text-align: center;
+}
+
+.report-signature-line {
+  border-top: 1px solid var(--text-dark);
+  margin-bottom: 4px;
+  height: 1px;
+}
+
+.report-signature-block p {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.report-stamp {
+  position: absolute;
+  top: -46px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-8deg);
+  width: 92px;
+  height: 92px;
+  object-fit: contain;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
 /* ---- Class Mark Book (form master) ---- */
 .markbook-nav {
   display: flex;
@@ -747,6 +785,32 @@
 
 .markbook-missing { color: #B5462E; font-weight: 700; }
 .markbook-row-missing { background: rgba(193, 104, 46, 0.06); }
+
+/* ---- Timetable grid ---- */
+.timetable-grid { min-width: 720px; }
+
+.timetable-cell {
+  cursor: pointer;
+  text-align: center;
+  padding: 8px 6px !important;
+  border-left: 1px solid var(--border-soft);
+  transition: background 0.15s ease;
+}
+
+.timetable-cell:hover { background: var(--gold-soft); }
+.timetable-cell-selected { background: var(--gold-soft); box-shadow: inset 0 0 0 2px var(--gold); }
+
+.timetable-cell-subject { font-weight: 600; font-size: 12.5px; }
+.timetable-cell-teacher { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.timetable-cell-empty { font-size: 12px; color: var(--text-muted); }
+
+.timetable-break-cell {
+  text-align: center;
+  background: #F1EEE6;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-style: italic;
+}
 
 /* ---- Toast notifications ---- */
 #toast-container {
@@ -1008,6 +1072,9 @@
   .report-footer-grid { gap: 8px; margin-bottom: 8px; }
   .report-remarks p { font-size: 10.5px; margin: 3px 0; }
   .report-qr canvas, .report-qr img { width: 70px !important; height: 70px !important; }
+  .report-signatures { margin-top: 26px; gap: 28px; }
+  .report-signature-block p { font-size: 9.5px; }
+  .report-stamp { width: 72px; height: 72px; top: -36px; }
 
   #id-card-preview-panel { box-shadow: none !important; padding: 0 !important; }
   #id-card-preview-panel .panel-header { display: none !important; }

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify an ID card</title>
+<link rel="stylesheet" href="css/style.css?v=2">
+<style>
+  .verify-page { min-height: 100vh; padding: 32px 20px; display: flex; justify-content: center; }
+  .verify-card { max-width: 440px; width: 100%; }
+  .verify-card .auth-card { padding: 28px 24px; }
+  .id-verify-output { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-soft); text-align: center; }
+  .id-verify-photo {
+    width: 96px; height: 96px; border-radius: 50%; object-fit: cover;
+    border: 3px solid var(--gold); margin: 0 auto 12px; display: block;
+  }
+  .id-verify-photo-fallback {
+    width: 96px; height: 96px; border-radius: 50%; margin: 0 auto 12px;
+    background: var(--gold-soft); color: var(--navy); display: flex;
+    align-items: center; justify-content: center; font-weight: 800; font-size: 28px;
+  }
+  .id-verify-badge {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #fff; background: var(--navy);
+    padding: 3px 10px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .id-verify-name { font-size: 19px; font-weight: 700; margin: 2px 0; }
+  .id-verify-role { color: var(--text-muted); font-size: 14px; margin: 0 0 4px; }
+  .id-verify-id { font-size: 13px; color: var(--text-muted); letter-spacing: 0.03em; }
+  .id-verify-valid { margin-top: 14px; color: #3A7D44; font-weight: 600; font-size: 13.5px; }
+  .powered-by {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-soft);
+  }
+  .powered-by img { height: 22px; width: auto; }
+  .powered-by span { font-size: 12px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+  <div class="verify-page">
+    <div class="verify-card">
+      <div class="auth-card">
+        <p class="eyebrow">ID card verification</p>
+        <h1 style="margin:4px 0 6px;">Verify an ID card</h1>
+        <p class="subtitle">Scan the QR code on a student or staff ID card, or type the code printed below it.</p>
+
+        <div class="field">
+          <label for="code-input">Verification code</label>
+          <input type="text" id="code-input" placeholder="Paste or type the code here">
+        </div>
+        <button class="btn-primary" onclick="lookupIdCardCode()">Look up ID</button>
+
+        <div id="error-banner" class="error-banner"></div>
+        <div id="id-verify-output"></div>
+
+        <div class="powered-by" id="powered-by-line" style="display:none;">
+          <img id="powered-by-logo" src="assets/logo.png" alt="">
+          <span id="powered-by-text"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script>
+    function showError(message) {
+      const el = document.getElementById('error-banner');
+      el.textContent = message;
+      el.classList.add('visible');
+    }
+    function clearError() {
+      const el = document.getElementById('error-banner');
+      el.textContent = '';
+      el.classList.remove('visible');
+    }
+
+    function initialsFrom(name) {
+      if (!name) return '?';
+      const parts = name.trim().split(/\s+/);
+      return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
+    }
+
+    async function lookupIdCardCode() {
+      clearError();
+      document.getElementById('id-verify-output').innerHTML = '';
+      document.getElementById('powered-by-line').style.display = 'none';
+      const code = document.getElementById('code-input').value.trim();
+      if (!code) { showError('Enter a code first.'); return; }
+
+      const { data, error } = await supabaseClient.rpc('get_id_card_by_token', { p_token: code });
+
+      if (error) {
+        if (error.code === '42883' || /function.*does not exist/i.test(error.message)) {
+          showError('The ID verification system isn\'t set up yet on this database (a required migration is missing). Ask the school admin to check this.');
+        } else {
+          showError('Something went wrong looking that up: ' + error.message);
+        }
+        return;
+      }
+
+      if (!data || !data.length) {
+        showError('No ID card found for that code. Double check it was scanned or typed correctly.');
+        return;
+      }
+
+      const r = data[0];
+      let photoUrl = r.photo_url || null;
+      if (r.photo_path) {
+        const bucket = r.subject_type === 'student' ? 'student-photos' : 'teacher-photos';
+        photoUrl = supabaseClient.storage.from(bucket).getPublicUrl(r.photo_path).data.publicUrl;
+      }
+      const photoHtml = photoUrl
+        ? `<img src="${photoUrl}" alt="${r.name}" class="id-verify-photo">`
+        : `<div class="id-verify-photo-fallback">${initialsFrom(r.name)}</div>`;
+
+      document.getElementById('id-verify-output').innerHTML = `
+        <div class="id-verify-output">
+          ${photoHtml}
+          <span class="id-verify-badge">${r.subject_type === 'student' ? 'Student' : 'Staff'}</span>
+          <p class="id-verify-name">${r.name}</p>
+          <p class="id-verify-role">${r.role_or_class}</p>
+          <p class="id-verify-id">${r.id_number}</p>
+          <p class="id-verify-valid">&#10003; Valid ID card issued by ${r.school_name}</p>
+        </div>
+      `;
+
+      if (r.school_name) {
+        document.getElementById('powered-by-text').textContent = `Powered by ${r.school_name}`;
+        if (r.school_logo_url) document.getElementById('powered-by-logo').src = r.school_logo_url;
+        document.getElementById('powered-by-line').style.display = 'flex';
+      }
+    }
+
+    // If opened via a QR scan (?token=...), look it up automatically
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      if (token) {
+        document.getElementById('code-input').value = token;
+        lookupIdCardCode();
+      }
+    })();
+  </script>
+</body>
+</html>

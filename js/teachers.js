@@ -84,18 +84,38 @@ function sectionGroupHtml(sectionName, teachersInSection) {
     </div>`;
 }
 
+// Groups subjects/classes under a section heading in the add/edit teacher
+// form, instead of one long flat list the admin has to scan through.
+function groupedChecklistHtml(items, checkboxClass) {
+  const bySection = {};
+  items.forEach((item) => {
+    const sec = item.section || 'Unassigned section';
+    if (!bySection[sec]) bySection[sec] = [];
+    bySection[sec].push(item);
+  });
+
+  const order = [...SECTIONS, 'Unassigned section'];
+  return order.map((sec) => {
+    const group = bySection[sec];
+    if (!group || !group.length) return '';
+    const rows = group.map((item) => `
+      <label style="display:block; font-size:14px; margin-bottom:6px;">
+        <input type="checkbox" class="${checkboxClass}" value="${item.id}"> ${item.name}
+      </label>`).join('');
+    return `<p class="eyebrow" style="margin:12px 0 4px;">${sec}</p>${rows}`;
+  }).join('');
+}
+
 function renderTeachersBody(teachers) {
   window.__teachersCache = teachers;
 
-  const subjectChecks = currentSubjectsList.map((s) => `
-    <label style="display:block; font-size:14px; margin-bottom:6px;">
-      <input type="checkbox" class="teacher-subject-check" value="${s.id}"> ${s.name}
-    </label>`).join('') || '<p class="text-muted" style="font-size:13.5px;">No subjects yet — add some on the Academics page.</p>';
+  const subjectChecks = currentSubjectsList.length
+    ? groupedChecklistHtml(currentSubjectsList, 'teacher-subject-check')
+    : '<p class="text-muted" style="font-size:13.5px;">No subjects yet — add some on the Academics page.</p>';
 
-  const classChecks = currentClassesList.map((c) => `
-    <label style="display:block; font-size:14px; margin-bottom:6px;">
-      <input type="checkbox" class="teacher-class-check" value="${c.id}"> ${c.name}${c.section ? ' (' + c.section + ')' : ''}
-    </label>`).join('') || '<p class="text-muted" style="font-size:13.5px;">No classes yet — add some on the Classes page.</p>';
+  const classChecks = currentClassesList.length
+    ? groupedChecklistHtml(currentClassesList, 'teacher-class-check')
+    : '<p class="text-muted" style="font-size:13.5px;">No classes yet — add some on the Classes page.</p>';
 
   const employmentOptions = EMPLOYMENT_TYPES.map((t) => `<option value="${t}">${t}</option>`).join('');
 

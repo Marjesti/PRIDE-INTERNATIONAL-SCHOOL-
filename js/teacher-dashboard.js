@@ -16,6 +16,20 @@ let markbookResultsBySubject = {};
 let markbookStudents = [];
 let markbookSlideDirection = 'next';
 
+// Form master student management (admin-toggleable; add/edit only, never delete)
+let formMastersCanEditStudents = false;
+
+// My Timetable (read-only, every teacher)
+const TEACHER_DAYS = [
+  { num: 1, label: 'Mon' }, { num: 2, label: 'Tue' }, { num: 3, label: 'Wed' },
+  { num: 4, label: 'Thu' }, { num: 5, label: 'Fri' }, { num: 6, label: 'Sat' },
+];
+let myTimetablePeriods = [];
+let myTimetableSlots = [];
+let editingFmStudentId = null;
+let selectedFmStudentPhotoFile = null;
+let removeFmStudentPhotoFlag = false;
+
 function gradeFor(total) {
   if (total === null || total === undefined) return '';
   if (total >= 90) return 'A+';
@@ -30,28 +44,136 @@ function gradeFor(total) {
   return 'F9';
 }
 
+let teacherShellBuilt = false;
+let activeTeacherSection = 'section-overview';
+
+function renderTeacherShell(teacherName, schoolName, isFormMaster) {
+  if (teacherShellBuilt) return; // only ever build the shell once
+  teacherShellBuilt = true;
+
+  const navItems = [
+    { href: '#section-overview', label: 'Overview' },
+    { href: '#section-timetable', label: 'My Timetable' },
+    ...(isFormMaster ? [{ href: '#section-approvals', label: 'Approvals' }] : []),
+    ...(isFormMaster ? [{ href: '#section-markbook', label: 'Class Mark Book' }] : []),
+    ...(isFormMaster && formMastersCanEditStudents ? [{ href: '#section-fm-students', label: 'My Students' }] : []),
+    ...(isFormMaster ? [{ href: '#section-notes', label: 'Notes & Remarks' }] : []),
+    { href: '#section-results', label: 'Submit Results' },
+  ];
+
+  document.body.insertAdjacentHTML('afterbegin', `
+    <div class="app-shell">
+      <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-logo">${initials(schoolName)}</div>
+          <div>
+            <div class="school-name">${schoolName}</div>
+            <div class="school-sub">Teacher workspace</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section-label">Menu</div>
+        <ul class="nav-list">
+          ${navItems.map((item) => {
+            const sectionId = item.href.replace('#', '');
+            return `<li><a href="${item.href}" data-section="${sectionId}" class="${sectionId === activeTeacherSection ? 'active' : ''}" onclick="switchTeacherSection(event, '${sectionId}')">${item.label}</a></li>`;
+          }).join('')}
+        </ul>
+
+        <div class="sidebar-footer">
+          <button onclick="signOutTeacher()">Sign out</button>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <div class="topbar">
+          <div class="topbar-left">
+            <button id="sidebar-toggle" class="hamburger-btn" aria-label="Toggle menu">
+              <span></span><span></span><span></span>
+            </button>
+            <div>
+              <h2 id="teacher-name" style="margin:0; font-size:16px;">${teacherName}</h2>
+              <div id="school-name" class="text-muted" style="font-size:12px;">${schoolName}</div>
+            </div>
+          </div>
+        </div>
+        <div id="page-body" class="page-fade-in"></div>
+      </main>
+    </div>
+  `);
+
+  const sidebarEl = document.querySelector('.sidebar');
+  const toggleBtn = document.getElementById('sidebar-toggle');
+  const backdropEl = document.getElementById('sidebar-backdrop');
+
+  function closeSidebar() {
+    sidebarEl.classList.remove('open');
+    backdropEl.classList.remove('show');
+    toggleBtn.classList.remove('active');
+  }
+  function openSidebar() {
+    sidebarEl.classList.add('open');
+    backdropEl.classList.add('show');
+    toggleBtn.classList.add('active');
+  }
+  toggleBtn.addEventListener('click', () => {
+    sidebarEl.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  backdropEl.addEventListener('click', closeSidebar);
+  document.querySelectorAll('.nav-list a').forEach((a) => a.addEventListener('click', closeSidebar));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });
+}
+
+function switchTeacherSection(event, sectionId) {
+  if (event) event.preventDefault();
+  activeTeacherSection = sectionId;
+
+  document.querySelectorAll('.nav-list a[data-section]').forEach((a) => {
+    a.classList.toggle('active', a.dataset.section === sectionId);
+  });
+
+  applyTeacherSectionVisibility();
+
+  const sidebarEl = document.querySelector('.sidebar');
+  const backdropEl = document.getElementById('sidebar-backdrop');
+  const toggleBtn = document.getElementById('sidebar-toggle');
+  if (sidebarEl) sidebarEl.classList.remove('open');
+  if (backdropEl) backdropEl.classList.remove('show');
+  if (toggleBtn) toggleBtn.classList.remove('active');
+}
+
+function applyTeacherSectionVisibility() {
+  const pageBody = document.getElementById('page-body');
+  if (!pageBody) return;
+  Array.from(pageBody.children).forEach((child) => {
+    if (!child.id) return; // leave anything without a section id alone
+    child.style.display = child.id === activeTeacherSection ? '' : 'none';
+  });
+}
+
 async function loadTeacherDashboard() {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session) { window.location.href = 'login.html'; return; }
   currentUserId = session.user.id;
 
   const { data: profile } = await supabaseClient
-    .from('profiles').select('name, role, school_id, schools ( name )').eq('id', session.user.id).single();
+    .from('profiles').select('name, role, school_id, schools ( name, form_masters_can_edit_students )').eq('id', session.user.id).single();
 
   if (!profile || profile.role !== 'teacher') {
     window.location.href = profile?.role === 'admin' ? 'overview.html' : 'login.html';
     return;
   }
   currentSchoolId = profile.school_id;
-
-  document.getElementById('teacher-name').textContent = profile.name;
-  document.getElementById('school-name').textContent = profile.schools?.name || '';
+  formMastersCanEditStudents = !!profile.schools?.form_masters_can_edit_students;
 
   const { data: teacher } = await supabaseClient
     .from('teachers')
     .select('id, name, form_master_class_id, classes!teachers_form_master_class_id_fkey ( id, name, section ), teacher_subjects ( subjects ( id, name, section ) ), teacher_classes ( classes ( id, name, section ) )')
     .eq('profile_id', session.user.id)
     .maybeSingle();
+
+  renderTeacherShell(profile.name, profile.schools?.name || '', !!teacher?.form_master_class_id);
 
   if (!teacher) {
     document.getElementById('page-body').innerHTML = `
@@ -70,12 +192,25 @@ async function loadTeacherDashboard() {
     .eq('school_id', profile.school_id).eq('is_active', true).maybeSingle();
   activeSession = session_;
 
-  const { data: students } = await supabaseClient
-    .from('students').select('id, name, admission_no, classes ( id, name )')
-    .eq('school_id', profile.school_id).order('name');
-  myStudents = students || [];
-
+  await loadMyStudents();
+  await loadMyTimetable();
   await refreshMyResults();
+}
+
+async function loadMyTimetable() {
+  const [{ data: periods }, { data: slots }] = await Promise.all([
+    supabaseClient.from('timetable_periods').select('id, label, start_time, end_time, sort_order, is_break').eq('school_id', currentSchoolId).order('sort_order'),
+    supabaseClient.from('timetable_slots').select('period_id, day_of_week, subject_id, class_id, subjects ( name ), classes ( name )').eq('teacher_id', teacherRecord.id),
+  ]);
+  myTimetablePeriods = periods || [];
+  myTimetableSlots = slots || [];
+}
+
+async function loadMyStudents() {
+  const { data: students } = await supabaseClient
+    .from('students').select('id, name, admission_no, guardian_email, guardian_phone, photo_url, photo_path, classes ( id, name )')
+    .eq('school_id', currentSchoolId).order('name');
+  myStudents = students || [];
 }
 
 async function refreshMyResults() {
@@ -138,6 +273,35 @@ async function loadClassMarkBook() {
   if (markbookSubjectIndex >= markbookSubjects.length) markbookSubjectIndex = 0;
 }
 
+function renderMyTimetablePanel() {
+  if (!myTimetablePeriods.length) return '';
+
+  const findSlot = (periodId, day) => myTimetableSlots.find((s) => s.period_id === periodId && s.day_of_week === day);
+
+  const rows = myTimetablePeriods.map((p) => {
+    if (p.is_break) {
+      return `<tr><td>${p.label}</td><td colspan="6" class="timetable-break-cell">${p.label}</td></tr>`;
+    }
+    const cells = TEACHER_DAYS.map((d) => {
+      const slot = findSlot(p.id, d.num);
+      return `<td class="timetable-cell" style="cursor:default;">
+        ${slot ? `<div class="timetable-cell-subject">${slot.subjects?.name || ''}</div><div class="timetable-cell-teacher">${slot.classes?.name || ''}</div>` : ''}
+      </td>`;
+    }).join('');
+    return `<tr><td>${p.label}<br><span class="text-muted" style="font-size:11px;">${p.start_time?.slice(0, 5)}-${p.end_time?.slice(0, 5)}</span></td>${cells}</tr>`;
+  }).join('');
+
+  return `
+    <div class="panel">
+      <p class="eyebrow">Your schedule</p>
+      <h3 class="panel-title">My Timetable</h3>
+      <div class="data-table-wrap"><table class="data-table timetable-grid">
+        <thead><tr><th>Period</th>${TEACHER_DAYS.map((d) => `<th>${d.label}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+}
+
 function renderDashboard() {
   const subjectTags = mySubjects.length
     ? mySubjects.map((s) => `<span style="display:inline-block; background:var(--gold-soft); color:var(--navy); padding:4px 10px; border-radius:999px; font-size:12.5px; margin:2px;">${s.name}</span>`).join('')
@@ -158,18 +322,23 @@ function renderDashboard() {
   const classFilterOptions = myClasses.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
 
   document.getElementById('page-body').innerHTML = `
-    <div class="panel">
-      <p class="eyebrow">Your assignments</p>
-      <h3 class="panel-title">Subjects &amp; classes</h3>
-      <p><strong>Subjects:</strong> ${subjectTags}</p>
-      <p style="margin-top:10px;"><strong>Classes handled:</strong> ${classTags}</p>
+    <div id="section-overview">
+      <div class="panel">
+        <p class="eyebrow">Your assignments</p>
+        <h3 class="panel-title">Subjects &amp; classes</h3>
+        <p><strong>Subjects:</strong> ${subjectTags}</p>
+        <p style="margin-top:10px;"><strong>Classes handled:</strong> ${classTags}</p>
+      </div>
+      ${formMasterLine}
     </div>
 
-    ${formMasterLine}
-    ${teacherRecord.form_master_class_id ? renderClassMarkBookPanel() : ''}
-    ${teacherRecord.form_master_class_id ? renderFormMasterApprovalPanel() : ''}
-    ${teacherRecord.form_master_class_id ? renderFormMasterNotesPanel() : ''}
+    <div id="section-timetable">${renderMyTimetablePanel()}</div>
+    <div id="section-fm-students">${teacherRecord.form_master_class_id && formMastersCanEditStudents ? renderFormMasterStudentsPanel() : ''}</div>
+    <div id="section-markbook">${teacherRecord.form_master_class_id ? renderClassMarkBookPanel() : ''}</div>
+    <div id="section-approvals">${teacherRecord.form_master_class_id ? renderFormMasterApprovalPanel() : ''}</div>
+    <div id="section-notes">${teacherRecord.form_master_class_id ? renderFormMasterNotesPanel() : ''}</div>
 
+    <div id="section-results">
     ${activeSession ? `
     <div class="panel">
       <p class="eyebrow">${activeSession.year_label} &middot; ${activeSession.term}</p>
@@ -193,18 +362,18 @@ function renderDashboard() {
           </div>
           <div class="field">
             <label for="result-ca1">CA1 score</label>
-            <input type="number" id="result-ca1" min="0" max="30" placeholder="e.g. 12">
+            <input type="number" id="result-ca1" min="0" max="15" placeholder="e.g. 12">
           </div>
           <div class="field">
             <label for="result-ca2">CA2 score</label>
-            <input type="number" id="result-ca2" min="0" max="30" placeholder="e.g. 15">
+            <input type="number" id="result-ca2" min="0" max="15" placeholder="e.g. 15">
           </div>
           <div class="field">
             <label for="result-exam">Exam score (out of 70)</label>
             <input type="number" id="result-exam" min="0" max="70">
           </div>
         </div>
-        <p class="text-muted" style="font-size:12px;">CA1 + CA2 together must not exceed 30. Enter one now and add the other later &mdash; both save independently, and you can keep editing until an admin publishes the result.</p>
+        <p class="text-muted" style="font-size:12px;">Maximums depend on the class's section (Pre-Nursery/Nursery/Primary: 20+20+60 &middot; JSS/SSS: 15+15+70). Choose a class to see the right limits. Enter one CA now and add the other later &mdash; both save independently, and you can keep editing until an admin publishes the result.</p>
         <button class="btn-gold" onclick="submitResult()">${editingResultId ? 'Save changes' : 'Submit for approval'}</button>
         ${editingResultId ? `<button class="btn-outline" onclick="cancelEditResult()">Cancel</button>` : ''}
         <div id="form-error" class="error-banner"></div>
@@ -218,7 +387,10 @@ function renderDashboard() {
       ${renderMyResultsTable()}
     </div>
     ` : `<div class="panel"><div class="empty-state">No active academic session right now.</div></div>`}
+    </div>
   `;
+
+  applyTeacherSectionVisibility();
 }
 
 function renderMyResultsTable() {
@@ -275,6 +447,197 @@ function renderFormMasterApprovalPanel() {
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;
+}
+
+function renderFormMasterStudentsPanel() {
+  const rows = markbookStudents.map((s) => `
+    <tr>
+      <td>
+        <span class="row-name">
+          ${studentPhotoUrl(s) ? `<img src="${studentPhotoUrl(s)}" alt="${s.name}" class="row-avatar-img">` : `<span class="student-avatar">${initials(s.name)}</span>`}
+          ${s.name}
+        </span>
+      </td>
+      <td class="text-muted">${s.admission_no || '&mdash;'}</td>
+      <td><button class="icon-btn" style="color: var(--navy);" onclick="startEditFmStudent(${s.id})">Edit</button></td>
+    </tr>`).join('');
+
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Form master</p>
+          <h3 class="panel-title">${teacherRecord.classes?.name || 'Your class'} students</h3>
+        </div>
+        <button class="btn-gold" onclick="openFmStudentForm()">Add student</button>
+      </div>
+      <p class="text-muted" style="font-size:12.5px; margin-top:-6px;">You can add and edit students in your own class. Removing a student is handled by the school admin.</p>
+
+      ${markbookStudents.length ? `
+        <div class="data-table-wrap"><table class="data-table">
+          <thead><tr><th>Student</th><th>Admission No.</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      ` : '<div class="empty-state">No students in your class yet.</div>'}
+
+      <div class="form-panel" id="fm-student-form">
+        <div class="form-grid">
+          <div class="field">
+            <label for="fm-student-name">Full name</label>
+            <input type="text" id="fm-student-name" placeholder="e.g. Amina Yusuf">
+          </div>
+          <div class="field">
+            <label for="fm-student-admission">Admission number</label>
+            <input type="text" id="fm-student-admission" placeholder="Leave blank to auto-generate">
+          </div>
+          <div class="field">
+            <label for="fm-student-guardian">Guardian email</label>
+            <input type="email" id="fm-student-guardian" placeholder="Optional">
+          </div>
+          <div class="field">
+            <label for="fm-student-guardian-phone">Guardian WhatsApp number</label>
+            <input type="text" id="fm-student-guardian-phone" placeholder="e.g. 2348012345678">
+          </div>
+          <div class="field">
+            <label for="fm-student-photo-file">Photo</label>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <img id="fm-student-photo-preview" src="" alt="" style="width:52px; height:52px; border-radius:50%; object-fit:cover; display:none; border:1px solid var(--border-soft);">
+              <input type="file" id="fm-student-photo-file" accept="image/jpeg,image/png,image/webp" onchange="onFmStudentPhotoFileChange(event)">
+            </div>
+            <button type="button" class="icon-btn" id="fm-student-photo-remove-btn" style="margin-top:6px; display:none;" onclick="removeFmStudentPhoto()">Remove photo</button>
+          </div>
+        </div>
+        <button class="btn-gold" id="fm-student-submit-btn" onclick="submitFmStudentForm()">Save student</button>
+        <button class="btn-outline" onclick="closeFmStudentForm()">Cancel</button>
+        <div id="fm-student-error" class="error-banner"></div>
+      </div>
+    </div>`;
+}
+
+function openFmStudentForm() {
+  editingFmStudentId = null;
+  document.getElementById('fm-student-name').value = '';
+  document.getElementById('fm-student-admission').value = '';
+  document.getElementById('fm-student-guardian').value = '';
+  document.getElementById('fm-student-guardian-phone').value = '';
+  resetFmStudentPhotoField();
+  document.getElementById('fm-student-submit-btn').textContent = 'Save student';
+  document.getElementById('fm-student-form').classList.add('open');
+}
+
+function closeFmStudentForm() {
+  document.getElementById('fm-student-form').classList.remove('open');
+  document.getElementById('fm-student-error').classList.remove('visible');
+}
+
+function startEditFmStudent(id) {
+  const student = markbookStudents.find((s) => s.id === id);
+  if (!student) return;
+  editingFmStudentId = id;
+  document.getElementById('fm-student-name').value = student.name || '';
+  document.getElementById('fm-student-admission').value = student.admission_no || '';
+  document.getElementById('fm-student-guardian').value = student.guardian_email || '';
+  document.getElementById('fm-student-guardian-phone').value = student.guardian_phone || '';
+  resetFmStudentPhotoField();
+  const existingUrl = studentPhotoUrl(student);
+  if (existingUrl) {
+    const previewEl = document.getElementById('fm-student-photo-preview');
+    previewEl.src = existingUrl;
+    previewEl.style.display = 'block';
+    document.getElementById('fm-student-photo-remove-btn').style.display = 'inline-block';
+  }
+  document.getElementById('fm-student-submit-btn').textContent = 'Update student';
+  document.getElementById('fm-student-form').classList.add('open');
+  document.getElementById('fm-student-form').scrollIntoView({ behavior: 'smooth' });
+}
+
+function resetFmStudentPhotoField() {
+  selectedFmStudentPhotoFile = null;
+  removeFmStudentPhotoFlag = false;
+  document.getElementById('fm-student-photo-file').value = '';
+  document.getElementById('fm-student-photo-preview').style.display = 'none';
+  document.getElementById('fm-student-photo-remove-btn').style.display = 'none';
+}
+
+function onFmStudentPhotoFileChange(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  selectedFmStudentPhotoFile = file;
+  removeFmStudentPhotoFlag = false;
+  const previewEl = document.getElementById('fm-student-photo-preview');
+  const reader = new FileReader();
+  reader.onload = (e) => { previewEl.src = e.target.result; previewEl.style.display = 'block'; };
+  reader.readAsDataURL(file);
+  document.getElementById('fm-student-photo-remove-btn').style.display = 'inline-block';
+}
+
+function removeFmStudentPhoto() {
+  selectedFmStudentPhotoFile = null;
+  removeFmStudentPhotoFlag = true;
+  document.getElementById('fm-student-photo-file').value = '';
+  document.getElementById('fm-student-photo-preview').style.display = 'none';
+  document.getElementById('fm-student-photo-remove-btn').style.display = 'none';
+}
+
+async function submitFmStudentForm() {
+  const errEl = document.getElementById('fm-student-error');
+  errEl.classList.remove('visible');
+
+  const name = document.getElementById('fm-student-name').value.trim();
+  const admissionNo = document.getElementById('fm-student-admission').value.trim();
+  const guardianEmail = document.getElementById('fm-student-guardian').value.trim();
+  const guardianPhone = document.getElementById('fm-student-guardian-phone').value.trim();
+
+  if (!name) { errEl.textContent = 'Student name is required.'; errEl.classList.add('visible'); return; }
+
+  let finalAdmissionNo = admissionNo || null;
+  if (!finalAdmissionNo && !editingFmStudentId) {
+    const { data: generated, error: genError } = await supabaseClient.rpc('get_next_admission_number', { p_school_id: currentSchoolId });
+    if (genError) { errEl.textContent = 'Could not auto-generate an admission number: ' + genError.message; errEl.classList.add('visible'); return; }
+    finalAdmissionNo = generated;
+  }
+
+  const payload = {
+    name,
+    admission_no: finalAdmissionNo,
+    class_id: teacherRecord.form_master_class_id,
+    guardian_email: guardianEmail || null,
+    guardian_phone: guardianPhone || null,
+  };
+
+  let studentId = editingFmStudentId;
+  const existingStudent = editingFmStudentId ? markbookStudents.find((s) => s.id === editingFmStudentId) : null;
+
+  if (studentId) {
+    const { error } = await supabaseClient.from('students').update(payload).eq('id', studentId);
+    if (error) { errEl.textContent = error.message; errEl.classList.add('visible'); return; }
+  } else {
+    const { data: newStudent, error } = await supabaseClient
+      .from('students').insert({ school_id: currentSchoolId, ...payload }).select().single();
+    if (error) { errEl.textContent = error.message; errEl.classList.add('visible'); return; }
+    studentId = newStudent.id;
+  }
+
+  if (selectedFmStudentPhotoFile) {
+    try {
+      const newPath = await uploadStudentPhoto(studentId, selectedFmStudentPhotoFile, existingStudent?.photo_path);
+      await supabaseClient.from('students').update({ photo_path: newPath }).eq('id', studentId);
+    } catch (photoErr) {
+      errEl.textContent = `Student saved, but the photo upload failed: ${photoErr.message}`;
+      errEl.classList.add('visible');
+      await loadMyStudents();
+      await refreshMyResults();
+      return;
+    }
+  } else if (removeFmStudentPhotoFlag && existingStudent?.photo_path) {
+    await deleteStudentPhotoFile(existingStudent.photo_path);
+    await supabaseClient.from('students').update({ photo_path: null, photo_url: null }).eq('id', studentId);
+  }
+
+  showToast(existingStudent ? 'Updated' : 'Saved');
+  closeFmStudentForm();
+  await loadMyStudents();
+  await refreshMyResults();
 }
 
 function renderClassMarkBookPanel() {
@@ -359,6 +722,27 @@ function markbookTouchEnd(event) {
   markbookGo(deltaX < 0 ? 1 : -1); // swipe left -> next, swipe right -> prev
 }
 
+// CA1/CA2/Exam maximums differ by section: the younger sections weight CA
+// higher (20/20/60), JSS and SSS weight the exam higher (15/15/70).
+function getAssessmentCaps(section) {
+  if (section === 'Playgroup/Pre-Nursery' || section === 'Nursery' || section === 'Primary') {
+    return { ca1: 20, ca2: 20, exam: 60 };
+  }
+  return { ca1: 15, ca2: 15, exam: 70 };
+}
+
+let currentAssessmentCaps = getAssessmentCaps(null);
+
+function applyAssessmentCapsToForm(section) {
+  currentAssessmentCaps = getAssessmentCaps(section);
+  document.getElementById('result-ca1').max = currentAssessmentCaps.ca1;
+  document.getElementById('result-ca2').max = currentAssessmentCaps.ca2;
+  document.getElementById('result-exam').max = currentAssessmentCaps.exam;
+  document.querySelector('label[for="result-ca1"]').textContent = `CA1 score (out of ${currentAssessmentCaps.ca1})`;
+  document.querySelector('label[for="result-ca2"]').textContent = `CA2 score (out of ${currentAssessmentCaps.ca2})`;
+  document.querySelector('label[for="result-exam"]').textContent = `Exam score (out of ${currentAssessmentCaps.exam})`;
+}
+
 function onResultClassChange() {
   const classId = document.getElementById('result-class').value;
   const studentSelect = document.getElementById('result-student');
@@ -380,6 +764,7 @@ function onResultClassChange() {
   // sections isn't shown subjects that don't apply to this class.
   const selectedClass = myClasses.find((c) => String(c.id) === String(classId));
   const classSection = selectedClass?.section || null;
+  applyAssessmentCapsToForm(classSection);
   const subjectsForSection = mySubjects.filter((s) => !s.section || s.section === classSection);
   subjectSelect.innerHTML = subjectsForSection.length
     ? subjectsForSection.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')
@@ -428,10 +813,10 @@ async function submitResult() {
   const ca1Score = ca1 === '' ? null : Number(ca1);
   const ca2Score = ca2 === '' ? null : Number(ca2);
   const examScore = exam === '' ? null : Number(exam);
-  if (ca1Score !== null && (ca1Score < 0 || ca1Score > 30)) { errEl.textContent = 'CA1 score must be 0-30.'; errEl.classList.add('visible'); return; }
-  if (ca2Score !== null && (ca2Score < 0 || ca2Score > 30)) { errEl.textContent = 'CA2 score must be 0-30.'; errEl.classList.add('visible'); return; }
-  if ((ca1Score ?? 0) + (ca2Score ?? 0) > 30) { errEl.textContent = 'CA1 + CA2 together cannot exceed 30.'; errEl.classList.add('visible'); return; }
-  if (examScore !== null && (examScore < 0 || examScore > 70)) { errEl.textContent = 'Exam score must be 0-70.'; errEl.classList.add('visible'); return; }
+  const caps = currentAssessmentCaps;
+  if (ca1Score !== null && (ca1Score < 0 || ca1Score > caps.ca1)) { errEl.textContent = `CA1 score must be 0-${caps.ca1}.`; errEl.classList.add('visible'); return; }
+  if (ca2Score !== null && (ca2Score < 0 || ca2Score > caps.ca2)) { errEl.textContent = `CA2 score must be 0-${caps.ca2}.`; errEl.classList.add('visible'); return; }
+  if (examScore !== null && (examScore < 0 || examScore > caps.exam)) { errEl.textContent = `Exam score must be 0-${caps.exam}.`; errEl.classList.add('visible'); return; }
 
   const caTotal = (ca1Score !== null || ca2Score !== null) ? (ca1Score ?? 0) + (ca2Score ?? 0) : null;
   const total = (caTotal !== null && examScore !== null) ? caTotal + examScore : null;
@@ -576,6 +961,12 @@ async function saveFormMasterNotes(studentId) {
   if (error) { errEl.textContent = error.message; errEl.classList.add('visible'); return; }
   okEl.textContent = 'Saved.'; okEl.classList.add('visible');
   showToast('Saved');
+}
+
+function initials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
 }
 
 async function signOutTeacher() {
