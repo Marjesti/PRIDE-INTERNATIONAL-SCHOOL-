@@ -134,10 +134,15 @@ function classGroupHtml(className, resultsInClass) {
   const subjectsHtml = Object.keys(bySubject).sort().map((name) => subjectSubsectionHtml(name, bySubject[name])).join('');
 
   return `
-    <div class="panel">
-      <p class="eyebrow">${resultsInClass.length} result${resultsInClass.length === 1 ? '' : 's'}</p>
-      <h3 class="panel-title">${className}</h3>
-      ${subjectsHtml}
+    <div class="premium-book">
+      <div class="premium-book-header">
+        <div>
+          <p class="eyebrow">${className}</p>
+          <h3>Results queue</h3>
+        </div>
+        <span class="premium-book-header-badge">${resultsInClass.length} result${resultsInClass.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="premium-book-body">${subjectsHtml}</div>
     </div>`;
 }
 

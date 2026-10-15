@@ -381,10 +381,15 @@ function renderDashboard() {
       ` : `<p class="text-muted" style="font-size:14px;">You need at least one subject and one class assigned before you can submit results.</p>`}
     </div>
 
-    <div class="panel">
-      <p class="eyebrow">Your submissions</p>
-      <h3 class="panel-title">Results you've entered</h3>
-      ${renderMyResultsTable()}
+    <div class="premium-book">
+      <div class="premium-book-header">
+        <div>
+          <p class="eyebrow">Your submissions</p>
+          <h3>Results you've entered</h3>
+        </div>
+        <span class="premium-book-header-badge">${myOwnResults.length} result${myOwnResults.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="premium-book-body">${renderMyResultsTable()}</div>
     </div>
     ` : `<div class="panel"><div class="empty-state">No active academic session right now.</div></div>`}
     </div>
@@ -411,16 +416,19 @@ function renderMyResultsTable() {
       <td>${r.students?.name || ''}</td>
       <td class="text-muted">${r.students?.classes?.name || ''}</td>
       <td>${r.subjects?.name || ''}</td>
-      <td class="text-muted">CA1: ${r.ca1_score ?? '--'} &middot; CA2: ${r.ca2_score ?? '--'} &middot; Exam: ${r.exam_score ?? '--'}</td>
-      <td>${r.total_score ?? '--'} (${r.grade || '--'})</td>
+      <td>${r.ca1_score ?? '<span class="markbook-missing">&mdash;</span>'}</td>
+      <td>${r.ca2_score ?? '<span class="markbook-missing">&mdash;</span>'}</td>
+      <td>${r.ca_score ?? '<span class="markbook-missing">&mdash;</span>'}</td>
+      <td>${r.exam_score ?? '<span class="markbook-missing">&mdash;</span>'}</td>
+      <td><strong>${r.total_score ?? '<span class="markbook-missing">&mdash;</span>'}</strong>${r.grade ? ` (${r.grade})` : ''}</td>
       <td>${r.status === 'pending' ? '<span class="text-muted">Pending</span>' : r.status === 'approved' ? '<span style="color:#8A6D1D; font-weight:600;">Approved</span>' : '<span style="color:#3A7D44; font-weight:600;">Published</span>'}</td>
       <td>${actions}</td>
     </tr>`;
   }).join('');
 
   return `
-    <div class="data-table-wrap"><table class="data-table">
-      <thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>CA1/CA2/Exam</th><th>Total</th><th>Status</th><th></th></tr></thead>
+    <div class="data-table-wrap"><table class="data-table markbook-table">
+      <thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>CA1</th><th>CA2</th><th>CA Total</th><th>Exam</th><th>Final</th><th>Status</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
 }
